@@ -6,7 +6,6 @@ if (!window.readerModeInstance) {
       this.isDarkMode = false;
       this.fontSize = 16;
       this.controls = null;
-      this.originalContent = null;
       this.readerContent = null;
       this.progressBar = null;
       this.readingTime = 0;
@@ -38,8 +37,23 @@ if (!window.readerModeInstance) {
           <button class="reader-btn" id="increaseFontBtn">
             A+
           </button>
+          <button class="reader-btn" id="resetBtn">
+            <svg class="reset-icon" viewBox="0 0 24 24" width="20" height="20">
+              <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+            </svg>
+          </button>
         </div>
         <div class="control-group">
+          <button class="reader-btn" id="previousBtn">
+            <svg class="previous-icon" viewBox="0 0 24 24" width="20" height="20">
+              <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+            </svg>
+          </button>
+          <button class="reader-btn" id="nextBtn">
+            <svg class="next-icon" viewBox="0 0 24 24" width="20" height="20">
+              <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
+            </svg>
+          </button>
           <button class="reader-btn" id="readerModeBtn"></button>
         </div>
       `;
@@ -67,7 +81,7 @@ if (!window.readerModeInstance) {
       const wordsPerMinute = 200;
       const wordCount = text.trim().split(/\s+/).length;
       const minutes = Math.ceil(wordCount / wordsPerMinute);
-      
+
       return minutes;
     }
 
@@ -122,45 +136,70 @@ if (!window.readerModeInstance) {
       }
     }
 
+    reset() {
+      this.setDarkMode(false);
+      this.fontSize = 16;
+      this.updateFontSize();
+      this.updateStore();
+    }
+
+    previousPage() {
+      const previousPage = document.querySelector('.reader-nav-prev > a');
+      if (previousPage) {
+        previousPage.click();
+      }
+    }
+
+    nextPage() {  
+      const nextPage = document.querySelector('.reader-nav-next > a');
+      if (nextPage) {
+        nextPage.click();
+      }
+    }
+
     attachEventListeners() {
       document.getElementById('readerModeBtn').addEventListener('click', () => this.toggleReaderMode());
       document.getElementById('darkModeBtn').addEventListener('click', () => this.toggleDarkMode());
       document.getElementById('decreaseFontBtn').addEventListener('click', () => this.decreaseFontSize());
       document.getElementById('increaseFontBtn').addEventListener('click', () => this.increaseFontSize());
-      
+      document.getElementById('resetBtn').addEventListener('click', () => this.reset());
+      document.getElementById('previousBtn').addEventListener('click', () => this.previousPage());
+      document.getElementById('nextBtn').addEventListener('click', () => this.nextPage());
       // Add scroll event listener for progress bar
       window.addEventListener('scroll', () => this.updateProgressBar());
     }
 
-    toggleReaderMode() {
-      this.isReaderMode = !this.isReaderMode;
+    setReaderMode(isReaderMode, forceReload = false) {
+      this.isReaderMode = isReaderMode;
+      this.updateStore();
       if (this.isReaderMode) {
         document.body.classList.add('reader-mode');
         this.activateReaderMode();
         this.showControls();
         this.showProgressBar();
       } else {
-        document.body.classList.remove('reader-mode');
         this.deactivateReaderMode();
-        this.hideControls();
-        this.hideProgressBar();
-        // Send message to reload page
-        chrome.runtime.sendMessage({ action: 'reloadPage' });
+        if (forceReload) {
+          window.location.reload();
+        }
       }
+    }
+
+    toggleReaderMode() {
+      this.setReaderMode(!this.isReaderMode, true);
     }
 
     activateReaderMode() {
       const content = document.querySelector('.contents-post');
       if (!content) return;
 
-      this.originalContent = content.cloneNode(true);
       this.readerContent = content.cloneNode(true);
-      
+
       // Clear the page
       document.body.innerHTML = '';
       document.body.appendChild(this.controls);
       document.body.appendChild(this.progressBar);
-      
+
       // Create reader container
       const readerContainer = document.createElement('div');
       readerContainer.className = 'reader-container';
@@ -171,7 +210,7 @@ if (!window.readerModeInstance) {
         // Create book info section
         const bookInfo = document.createElement('div');
         bookInfo.className = 'reader-book-info';
-        
+
         // Add book title from post-header
         const bookTitle = this.readerContent.querySelector('.post-header');
         if (bookTitle) {
@@ -204,7 +243,7 @@ if (!window.readerModeInstance) {
         // Create content section
         const contentSection = document.createElement('div');
         contentSection.className = 'reader-content';
-        
+
         // Filter out unwanted elements from content
         const clonedContent = this.readerContent.cloneNode(true);
         Array.from(clonedContent.querySelectorAll('.post-contents > *')).forEach(element => {
@@ -233,25 +272,25 @@ if (!window.readerModeInstance) {
         if (navigation) {
           const readerNavigation = document.createElement('div');
           readerNavigation.className = 'reader-navigation';
-          
+
           const navContainer = document.createElement('div');
           navContainer.className = 'reader-nav-container';
-          
+
           // Copy navigation content
           navContainer.innerHTML = navigation.innerHTML;
-          
+
           // Update classes for styling
           const prevLink = navContainer.querySelector('.page-prev');
           const nextLink = navContainer.querySelector('.page-next');
-          
+
           if (prevLink) {
             prevLink.className = 'reader-nav-prev';
           }
-          
+
           if (nextLink) {
             nextLink.className = 'reader-nav-next';
           }
-          
+
           readerNavigation.appendChild(navContainer);
           readerContainer.appendChild(readerNavigation);
         }
@@ -260,7 +299,7 @@ if (!window.readerModeInstance) {
 
         // Calculate and store reading time after content is created
         this.readingTime = this.calculateReadingTime();
-        
+
         // Add reading time after calculation
         const readingTimeContainer = document.createElement('div');
         readingTimeContainer.className = 'reader-reading-time';
@@ -277,22 +316,14 @@ if (!window.readerModeInstance) {
     }
 
     deactivateReaderMode() {
-      if (!this.originalContent) return;
-      
-      document.body.innerHTML = '';
-      document.body.appendChild(this.controls);
-      document.body.appendChild(this.originalContent);
-      
-      if (this.isDarkMode) {
-        document.body.classList.add('dark-mode');
-      }
-      this.updateFontSize();
+      this.isReaderMode = false;
+      this.updateStore();
     }
 
-    toggleDarkMode() {
-      this.isDarkMode = !this.isDarkMode;
-      document.body.classList.toggle('dark-mode');
-      
+    setDarkMode(isDarkMode) {
+      this.isDarkMode = isDarkMode;
+      document.body.classList.toggle('dark-mode', isDarkMode);
+
       // Toggle dark/light icons
       const darkIcon = document.querySelector('.dark-icon');
       const lightIcon = document.querySelector('.light-icon');
@@ -303,20 +334,42 @@ if (!window.readerModeInstance) {
         darkIcon.style.display = 'block';
         lightIcon.style.display = 'none';
       }
+      this.updateStore();
+    }
+
+    toggleDarkMode() {
+      this.setDarkMode(!this.isDarkMode);
     }
 
     decreaseFontSize() {
       this.fontSize = Math.max(12, this.fontSize - 2);
       this.updateFontSize();
+      this.updateStore();
     }
 
     increaseFontSize() {
       this.fontSize = Math.min(24, this.fontSize + 2);
       this.updateFontSize();
+      this.updateStore();
     }
 
     updateFontSize() {
       document.body.style.fontSize = `${this.fontSize}px`;
+    }
+
+    setConfig(isReaderMode, isDarkMode, fontSize) {
+      this.fontSize = fontSize;
+      this.isDarkMode = isDarkMode;
+      this.setReaderMode(isReaderMode);
+
+    }
+
+    updateStore() {
+      localStorage.setItem('readerModeConfig', JSON.stringify({
+        isReaderMode: this.isReaderMode,
+        isDarkMode: this.isDarkMode,
+        fontSize: this.fontSize
+      }));
     }
   }
 
@@ -325,6 +378,11 @@ if (!window.readerModeInstance) {
   window.readerModeInstance.init();
 }
 
+const loadedConfig = localStorage.getItem('readerModeConfig');
+if (loadedConfig) {
+  const config = JSON.parse(loadedConfig);
+  window.readerModeInstance.setConfig(config.isReaderMode, config.isDarkMode, config.fontSize);
+}
 // Listen for messages from background script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'toggleReaderMode' && window.readerModeInstance) {

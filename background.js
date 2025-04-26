@@ -8,10 +8,3 @@ chrome.action.onClicked.addListener((tab) => {
   // Send message to content script to toggle reader mode
   chrome.tabs.sendMessage(tab.id, { action: 'toggleReaderMode' });
 });
-
-// Listen for messages from content script
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === 'reloadPage') {
-    chrome.tabs.reload(sender.tab.id);
-  }
-}); 
