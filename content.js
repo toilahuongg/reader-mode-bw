@@ -52,9 +52,6 @@ if (!window.readerModeInstance) {
       progressBar.className = 'reader-progress-bar';
       progressBar.innerHTML = `
         <div class="progress-bar-fill"></div>
-        <div class="progress-text">
-          <span class="reading-time"></span>
-        </div>
       `;
       document.body.appendChild(progressBar);
       this.progressBar = progressBar;
