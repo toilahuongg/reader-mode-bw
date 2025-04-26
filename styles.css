@@ -371,7 +371,69 @@ body {
   color: #fff;
 }
 
-/* Responsive design */
+/* Progress Bar */
+.reader-progress-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background-color: rgba(0, 0, 0, 0.1);
+  z-index: 1001;
+  display: none;
+}
+
+.reader-progress-bar .progress-bar-fill {
+  height: 100%;
+  background-color: #4a90e2;
+  width: 0;
+  transition: width 0.1s ease;
+}
+
+.reader-progress-bar .progress-text {
+  position: absolute;
+  left: 20px;
+  top: 10px;
+  font-size: 12px;
+  color: #666;
+  background-color: rgba(255, 255, 255, 0.9);
+  padding: 4px 8px;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.dark-mode .reader-progress-bar {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.dark-mode .reader-progress-bar .progress-bar-fill {
+  background-color: #64b5f6;
+}
+
+.dark-mode .reader-progress-bar .progress-text {
+  color: #fff;
+  background-color: rgba(0, 0, 0, 0.8);
+}
+
+/* Add reading time to chapter info */
+.reader-chapter-info {
+  text-align: left;
+  margin-bottom: 20px;
+}
+
+.reader-reading-time {
+  font-size: 0.9em;
+  color: #666;
+  margin-top: 5px;
+  text-align: left;
+  padding-left: 20px;
+}
+
+.dark-mode .reader-reading-time {
+  color: #aaa;
+}
+
+/* Responsive styles for progress bar */
 @media (max-width: 768px) {
   .reader-controls {
     top: auto;
@@ -433,5 +495,10 @@ body {
     width: 36px;
     height: 36px;
     font-size: 14px;
+  }
+
+  .reader-progress-bar .progress-text {
+    left: 10px;
+    font-size: 11px;
   }
 } 

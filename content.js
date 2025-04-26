@@ -8,10 +8,13 @@ if (!window.readerModeInstance) {
       this.controls = null;
       this.originalContent = null;
       this.readerContent = null;
+      this.progressBar = null;
+      this.readingTime = 0;
     }
 
     init() {
       this.createControls();
+      this.createProgressBar();
       this.attachEventListeners();
       this.hideControls();
     }
@@ -44,6 +47,72 @@ if (!window.readerModeInstance) {
       this.controls = controls;
     }
 
+    createProgressBar() {
+      const progressBar = document.createElement('div');
+      progressBar.className = 'reader-progress-bar';
+      progressBar.innerHTML = `
+        <div class="progress-bar-fill"></div>
+        <div class="progress-text">
+          <span class="reading-time"></span>
+        </div>
+      `;
+      document.body.appendChild(progressBar);
+      this.progressBar = progressBar;
+    }
+
+    calculateReadingTime() {
+      const content = document.querySelector('.reader-content');
+      if (!content) return 0;
+
+      // Get all text content
+      const text = content.textContent;
+      // Average reading speed: 200 words per minute
+      const wordsPerMinute = 200;
+      const wordCount = text.trim().split(/\s+/).length;
+      const minutes = Math.ceil(wordCount / wordsPerMinute);
+      
+      return minutes;
+    }
+
+    updateProgressBar() {
+      if (!this.progressBar || !this.isReaderMode) return;
+
+      const content = document.querySelector('.reader-content');
+      if (!content) return;
+
+      const contentRect = content.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      const scrollPosition = window.scrollY;
+      const contentTop = contentRect.top + scrollPosition;
+      const contentBottom = contentRect.bottom + scrollPosition;
+      const viewportBottom = scrollPosition + viewportHeight;
+
+      // Calculate progress percentage
+      const progress = Math.min(
+        100,
+        Math.max(
+          0,
+          ((viewportBottom - contentTop) / (contentBottom - contentTop)) * 100
+        )
+      );
+
+      // Update progress bar
+      const progressFill = this.progressBar.querySelector('.progress-bar-fill');
+      progressFill.style.width = `${progress}%`;
+    }
+
+    showProgressBar() {
+      if (this.progressBar) {
+        this.progressBar.style.display = 'block';
+      }
+    }
+
+    hideProgressBar() {
+      if (this.progressBar) {
+        this.progressBar.style.display = 'none';
+      }
+    }
+
     showControls() {
       if (this.controls) {
         this.controls.style.display = 'flex';
@@ -61,6 +130,9 @@ if (!window.readerModeInstance) {
       document.getElementById('darkModeBtn').addEventListener('click', () => this.toggleDarkMode());
       document.getElementById('decreaseFontBtn').addEventListener('click', () => this.decreaseFontSize());
       document.getElementById('increaseFontBtn').addEventListener('click', () => this.increaseFontSize());
+      
+      // Add scroll event listener for progress bar
+      window.addEventListener('scroll', () => this.updateProgressBar());
     }
 
     toggleReaderMode() {
@@ -69,10 +141,12 @@ if (!window.readerModeInstance) {
         document.body.classList.add('reader-mode');
         this.activateReaderMode();
         this.showControls();
+        this.showProgressBar();
       } else {
         document.body.classList.remove('reader-mode');
         this.deactivateReaderMode();
         this.hideControls();
+        this.hideProgressBar();
         // Send message to reload page
         chrome.runtime.sendMessage({ action: 'reloadPage' });
       }
@@ -88,6 +162,7 @@ if (!window.readerModeInstance) {
       // Clear the page
       document.body.innerHTML = '';
       document.body.appendChild(this.controls);
+      document.body.appendChild(this.progressBar);
       
       // Create reader container
       const readerContainer = document.createElement('div');
@@ -183,15 +258,25 @@ if (!window.readerModeInstance) {
           readerNavigation.appendChild(navContainer);
           readerContainer.appendChild(readerNavigation);
         }
-      }
 
-      document.body.appendChild(readerContainer);
+        document.body.appendChild(readerContainer);
 
-      // Apply current styles
-      if (this.isDarkMode) {
-        document.body.classList.add('dark-mode');
+        // Calculate and store reading time after content is created
+        this.readingTime = this.calculateReadingTime();
+        
+        // Add reading time after calculation
+        const readingTimeContainer = document.createElement('div');
+        readingTimeContainer.className = 'reader-reading-time';
+        readingTimeContainer.textContent = `~${this.readingTime} min read`;
+        bookInfo.appendChild(readingTimeContainer);
+
+        // Apply current styles
+        if (this.isDarkMode) {
+          document.body.classList.add('dark-mode');
+        }
+        this.updateFontSize();
+        this.updateProgressBar();
       }
-      this.updateFontSize();
     }
 
     deactivateReaderMode() {
