@@ -4,6 +4,7 @@ if (!window.readerModeInstance) {
     constructor() {
       this.isReaderMode = false;
       this.isDarkMode = false;
+      this.isSpeechMode = false;
       this.fontSize = 16;
       this.controls = null;
       this.readerContent = null;
@@ -19,22 +20,27 @@ if (!window.readerModeInstance) {
     }
 
     async init() {
+      await this.loadSettings();
       this.createControls();
       this.createProgressBar();
-      await this.loadSettings();
       this.attachEventListeners();
       this.hideControls();
       this.loadAPIKey();
+      this.setReaderMode(this.isReaderMode);
     }
 
     async loadSettings() {
       try {
-        const result = await chrome.storage.sync.get(['isReaderMode', 'isDarkMode', 'fontSize']);
+        const result = await chrome.storage.sync.get(['isReaderMode', 'isDarkMode', 'fontSize', 'isSpeechMode']);
+        console.log('Loaded settings:', result);
         if (result.isReaderMode !== undefined) {
           this.isReaderMode = result.isReaderMode;
         }
         if (result.isDarkMode !== undefined) {
           this.isDarkMode = result.isDarkMode;
+        }
+        if (result.isSpeechMode !== undefined) {
+          this.isSpeechMode = result.isSpeechMode;
         }
         if (result.fontSize !== undefined) {
           this.fontSize = result.fontSize;
@@ -80,7 +86,7 @@ if (!window.readerModeInstance) {
               <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
             </svg>
           </button>
-          <button class="reader-btn" id="ttsBtn" title="Text to Speech">
+          ${this.isSpeechMode ? `<button class="reader-btn" id="ttsBtn" title="Text to Speech">
             <svg class="tts-icon" viewBox="0 0 24 24" width="20" height="20">
               <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
             </svg>
@@ -95,6 +101,7 @@ if (!window.readerModeInstance) {
               <path d="M6 6h12v12H6z"/>
             </svg>
           </button>
+          ` : ''}
         </div>
         <div class="control-group">
           <button class="reader-btn" id="previousBtn">
@@ -218,9 +225,9 @@ if (!window.readerModeInstance) {
       document.getElementById('resetBtn').addEventListener('click', () => this.reset());
       document.getElementById('previousBtn').addEventListener('click', () => this.previousPage());
       document.getElementById('nextBtn').addEventListener('click', () => this.nextPage());
-      document.getElementById('ttsBtn').addEventListener('click', () => this.startTextToSpeech());
-      document.getElementById('ttsPauseBtn').addEventListener('click', () => this.pauseTextToSpeech());
-      document.getElementById('ttsStopBtn').addEventListener('click', () => this.stopTextToSpeech());
+      document.getElementById('ttsBtn')?.addEventListener('click', () => this.startTextToSpeech());
+      document.getElementById('ttsPauseBtn')?.addEventListener('click', () => this.pauseTextToSpeech());
+      document.getElementById('ttsStopBtn')?.addEventListener('click', () => this.stopTextToSpeech());
       window.addEventListener('scroll', () => this.updateProgressBar());
 
       // Add paragraph selection event listeners
@@ -277,6 +284,11 @@ if (!window.readerModeInstance) {
           window.location.reload();
         }
       }
+    }
+
+    setSpeechMode(isSpeechMode) {
+      this.isSpeechMode = isSpeechMode;
+      this.updateStore();
     }
 
     toggleReaderMode() {
@@ -408,6 +420,10 @@ if (!window.readerModeInstance) {
         if (this.isDarkMode) {
           document.body.classList.add('dark-mode');
         }
+
+        if (this.isSpeechMode) {
+          document.body.classList.add('speech-mode');
+        }
         this.updateFontSize();
         this.updateProgressBar();
       }
@@ -455,9 +471,10 @@ if (!window.readerModeInstance) {
       document.body.style.fontSize = `${this.fontSize}px`;
     }
 
-    async setConfig(isReaderMode, isDarkMode, fontSize) {
+    async setConfig(isReaderMode, isDarkMode, fontSize, isSpeechMode) {
       this.fontSize = fontSize;
       this.isDarkMode = isDarkMode;
+      this.isSpeechMode = isSpeechMode;
       this.setReaderMode(isReaderMode);
     }
 
@@ -466,6 +483,7 @@ if (!window.readerModeInstance) {
         await chrome.storage.sync.set({
           isReaderMode: this.isReaderMode,
           isDarkMode: this.isDarkMode,
+          isSpeechMode: this.isSpeechMode,
           fontSize: this.fontSize
         });
       } catch (error) {
@@ -729,17 +747,6 @@ if (!window.readerModeInstance) {
   window.readerModeInstance.init();
 }
 
-// Load saved configuration
-chrome.storage.sync.get(['isReaderMode', 'isDarkMode', 'fontSize'], (result) => {
-  if (window.readerModeInstance) {
-    console.log('Setting configuration:', result);
-    window.readerModeInstance.setConfig(
-      result.isReaderMode || false,
-      result.isDarkMode || false,
-      result.fontSize || 16
-    );
-  }
-});
 
 // Listen for messages from background script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -759,5 +766,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'updateDarkMode' && window.readerModeInstance) {
     window.readerModeInstance.setDarkMode(message.enabled);
+  }
+});
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === 'updateSpeechMode' && window.readerModeInstance) {
+    window.readerModeInstance.setSpeechMode(message.enabled);
   }
 });

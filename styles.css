@@ -158,32 +158,32 @@ body {
   margin-bottom: 0;
 }
 
-.reader-paragraph.highlight {
+.speech-mode .reader-paragraph.highlight {
   background-color: rgba(255, 255, 0, 0.2);
   transition: background-color 0.3s ease;
 }
 
-.dark-mode .reader-paragraph.highlight {
+.speech-mode.dark-mode .reader-paragraph.highlight {
   background-color: rgba(255, 255, 0, 0.3);
   color: #fff;
   text-shadow: 0 0 1px rgba(0, 0, 0, 0.3);
 }
 
-.reader-paragraph.selected {
+.speech-mode .reader-paragraph.selected {
   outline: 2px solid #4a90e2;
   outline-offset: 2px;
   transition: outline 0.2s ease;
 }
 
-.dark-mode .reader-paragraph.selected {
+.speech-mode.dark-mode .reader-paragraph.selected {
   outline-color: #64b5f6;
 }
 
-.reader-paragraph:hover {
+.speech-mode .reader-paragraph:hover {
   background-color: rgba(0, 0, 0, 0.05);
 }
 
-.dark-mode .reader-paragraph:hover {
+.speech-mode.dark-mode .reader-paragraph:hover {
   background-color: rgba(255, 255, 255, 0.05);
 }
 

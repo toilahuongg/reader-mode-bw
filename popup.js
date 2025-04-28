@@ -1,73 +1,48 @@
 // Load saved settings when popup opens
-document.addEventListener('DOMContentLoaded', async () => {
-  // Load API key
-  const result = await chrome.storage.sync.get([
-    'openaiApiKey',
-    'isReaderMode',
-    'isDarkMode'
-  ]);
-  
-  if (result.openaiApiKey) {
-    document.getElementById('apiKey').value = result.openaiApiKey;
-  }
-  
-  if (result.isReaderMode !== undefined) {
-    document.getElementById('enableReaderMode').checked = result.isReaderMode;
-  }
-  
-  if (result.isDarkMode !== undefined) {
-    document.getElementById('enableDarkMode').checked = result.isDarkMode;
-  }
-});
+document.addEventListener('DOMContentLoaded', function() {
+  // Load saved settings
+  chrome.storage.sync.get(['isReaderMode', 'isDarkMode', 'isSpeechMode', 'openaiApiKey'], function(result) {
+    document.getElementById('enableReaderMode').checked = result.isReaderMode || false;
+    document.getElementById('enableDarkMode').checked = result.isDarkMode || false;
+    document.getElementById('enableSpeechMode').checked = result.isSpeechMode || false;
+    document.getElementById('apiKey').value = result.openaiApiKey || '';
+  });
 
-// Save API key
-document.getElementById('saveApiKey').addEventListener('click', async () => {
-  const apiKey = document.getElementById('apiKey').value.trim();
-  
-  if (!apiKey) {
-    alert('Please enter your OpenAI API key');
-    return;
-  }
-  
-  try {
-    await chrome.storage.sync.set({ openaiApiKey: apiKey });
-    alert('API key saved successfully');
-  } catch (error) {
-    console.error('Error saving API key:', error);
-    alert('Error saving API key. Please try again.');
-  }
-});
+  // Save API key
+  document.getElementById('saveApiKey').addEventListener('click', function() {
+    const apiKey = document.getElementById('apiKeyInput').value;
+    chrome.storage.sync.set({ openaiApiKey: apiKey }, function() {
+      alert('API Key saved successfully!');
+    });
+  });
 
-// Save enable reader mode setting
-document.getElementById('enableReaderMode').addEventListener('change', async (e) => {
-  try {
-    await chrome.storage.sync.set({ isReaderMode: e.target.checked });
-    // Send message to content script to update reader mode
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab) {
-      chrome.tabs.sendMessage(tab.id, {
-        action: 'updateReaderMode',
-        enabled: e.target.checked
+  // Toggle reader mode
+  document.getElementById('enableReaderMode').addEventListener('change', function() {
+    const isEnabled = this.checked;
+    chrome.storage.sync.set({ isReaderMode: isEnabled }, function() {
+      chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+        chrome.tabs.sendMessage(tabs[0].id, {action: 'updateReaderMode', enabled: isEnabled});
       });
-    }
-  } catch (error) {
-    console.error('Error saving enable reader mode setting:', error);
-  }
-});
+    });
+  });
 
-// Save enable dark mode setting
-document.getElementById('enableDarkMode').addEventListener('change', async (e) => {
-  try {
-    await chrome.storage.sync.set({ isDarkMode: e.target.checked });
-    // Send message to content script to update dark mode
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab) {
-      chrome.tabs.sendMessage(tab.id, {
-        action: 'updateDarkMode',
-        enabled: e.target.checked
+  // Toggle dark mode
+  document.getElementById('enableDarkMode').addEventListener('change', function() {
+    const isEnabled = this.checked;
+    chrome.storage.sync.set({ isDarkMode: isEnabled }, function() {
+      chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+        chrome.tabs.sendMessage(tabs[0].id, {action: 'updateDarkMode', enabled: isEnabled});
       });
-    }
-  } catch (error) {
-    console.error('Error saving enable dark mode setting:', error);
-  }
+    });
+  });
+
+  // Toggle speech mode
+  document.getElementById('enableSpeechMode').addEventListener('change', function() {
+    const isEnabled = this.checked;
+    chrome.storage.sync.set({ isSpeechMode: isEnabled }, function() {
+      chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+        chrome.tabs.sendMessage(tabs[0].id, {action: 'updateSpeechMode', enabled: isEnabled});
+      });
+    });
+  });
 }); 
