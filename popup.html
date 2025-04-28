@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Reader Mode Settings</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <div class="header">
+      <h1>Reader Mode</h1>
+    </div>
+    
+    <div class="settings-section">
+      <h2>OpenAI Settings</h2>
+      <div class="input-group">
+        <label for="apiKey">API Key</label>
+        <input type="password" id="apiKey" placeholder="Enter your OpenAI API key">
+        <button id="saveApiKey">Save</button>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h2>Reader Settings</h2>
+      <div class="toggle-group">
+        <label class="toggle">
+          <input type="checkbox" id="enableReaderMode">
+          <span class="toggle-label">Enable Reader Mode</span>
+        </label>
+      </div>
+      <div class="toggle-group">
+        <label class="toggle">
+          <input type="checkbox" id="enableDarkMode">
+          <span class="toggle-label">Enable Dark Mode</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h2>About</h2>
+      <p>Version 1.0</p>
+      <p>Reader Mode helps you read content more comfortably.</p>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html> 

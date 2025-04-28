@@ -9,13 +9,51 @@ if (!window.readerModeInstance) {
       this.readerContent = null;
       this.progressBar = null;
       this.readingTime = 0;
+      this.openAIReader = null;
+      this.apiKey = null;
+      this.isSpeechStopped = false;
+      this.selectedParagraph = null;
+      this.contextMenu = null;
+      this.nextParagraphAudio = null;
+      this.audioMap = new Map(); // Map to store audio blobs with keys
     }
 
-    init() {
+    async init() {
       this.createControls();
       this.createProgressBar();
+      await this.loadSettings();
       this.attachEventListeners();
       this.hideControls();
+      this.loadAPIKey();
+    }
+
+    async loadSettings() {
+      try {
+        const result = await chrome.storage.sync.get(['isReaderMode', 'isDarkMode', 'fontSize']);
+        if (result.isReaderMode !== undefined) {
+          this.isReaderMode = result.isReaderMode;
+        }
+        if (result.isDarkMode !== undefined) {
+          this.isDarkMode = result.isDarkMode;
+        }
+        if (result.fontSize !== undefined) {
+          this.fontSize = result.fontSize;
+        }
+      } catch (error) {
+        console.error('Error loading settings:', error);
+      }
+    }
+
+    async loadAPIKey() {
+      try {
+        const result = await chrome.storage.sync.get('openaiApiKey');
+        this.apiKey = result.openaiApiKey;
+        if (this.apiKey) {
+          this.openAIReader = new OpenAIReader(this.apiKey);
+        }
+      } catch (error) {
+        console.error('Error loading API key:', error);
+      }
     }
 
     createControls() {
@@ -42,6 +80,21 @@ if (!window.readerModeInstance) {
               <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
             </svg>
           </button>
+          <button class="reader-btn" id="ttsBtn" title="Text to Speech">
+            <svg class="tts-icon" viewBox="0 0 24 24" width="20" height="20">
+              <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+            </svg>
+          </button>
+          <button class="reader-btn" id="ttsPauseBtn" title="Pause Speech" style="display: none;">
+            <svg class="pause-icon" viewBox="0 0 24 24" width="20" height="20">
+              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+            </svg>
+          </button>
+          <button class="reader-btn" id="ttsStopBtn" title="Stop Speech" style="display: none;">
+            <svg class="stop-icon" viewBox="0 0 24 24" width="20" height="20">
+              <path d="M6 6h12v12H6z"/>
+            </svg>
+          </button>
         </div>
         <div class="control-group">
           <button class="reader-btn" id="previousBtn">
@@ -51,7 +104,7 @@ if (!window.readerModeInstance) {
           </button>
           <button class="reader-btn" id="nextBtn">
             <svg class="next-icon" viewBox="0 0 24 24" width="20" height="20">
-              <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
+              <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
             </svg>
           </button>
           <button class="reader-btn" id="readerModeBtn"></button>
@@ -150,7 +203,7 @@ if (!window.readerModeInstance) {
       }
     }
 
-    nextPage() {  
+    nextPage() {
       const nextPage = document.querySelector('.reader-nav-next > a');
       if (nextPage) {
         nextPage.click();
@@ -165,8 +218,49 @@ if (!window.readerModeInstance) {
       document.getElementById('resetBtn').addEventListener('click', () => this.reset());
       document.getElementById('previousBtn').addEventListener('click', () => this.previousPage());
       document.getElementById('nextBtn').addEventListener('click', () => this.nextPage());
-      // Add scroll event listener for progress bar
+      document.getElementById('ttsBtn').addEventListener('click', () => this.startTextToSpeech());
+      document.getElementById('ttsPauseBtn').addEventListener('click', () => this.pauseTextToSpeech());
+      document.getElementById('ttsStopBtn').addEventListener('click', () => this.stopTextToSpeech());
       window.addEventListener('scroll', () => this.updateProgressBar());
+
+      // Add paragraph selection event listeners
+      document.addEventListener('click', (e) => {
+        if (this.isReaderMode) {
+          const paragraph = e.target.closest('.reader-paragraph');
+          if (paragraph) {
+            // Remove previous selection
+            if (this.selectedParagraph) {
+              this.selectedParagraph.classList.remove('selected');
+            }
+            // Set new selection
+            this.selectedParagraph = paragraph;
+            this.selectedParagraph.classList.add('selected');
+          }
+        }
+      });
+
+      // Add context menu event listeners
+      document.addEventListener('contextmenu', (e) => {
+        if (this.isReaderMode) {
+          const paragraph = e.target.closest('.reader-paragraph');
+          if (paragraph && !this.isEmptyContent(paragraph)) {
+            e.preventDefault(); // Prevent default context menu
+            this.showContextMenu(e, paragraph);
+          }
+        }
+      });
+
+      // Close context menu when clicking outside
+      document.addEventListener('click', (e) => {
+        if (this.contextMenu && !this.contextMenu.contains(e.target)) {
+          this.contextMenu.style.display = 'none';
+        }
+      });
+    }
+
+    isEmptyContent(element) {
+      const text = element.textContent.trim();
+      return !text || text === '\u00A0' || text === '&nbsp;';
     }
 
     setReaderMode(isReaderMode, forceReload = false) {
@@ -249,6 +343,10 @@ if (!window.readerModeInstance) {
         Array.from(clonedContent.querySelectorAll('.post-contents > *')).forEach(element => {
           // Skip specific elements that are already handled
           if (element.matches('h6, h1, .navigation, .post-header, .btn-wrap')) {
+            return;
+          }
+          const text = element.textContent;
+          if (!text || text === '\u00A0' || text === '&nbsp;' || text === ' ') {
             return;
           }
 
@@ -357,19 +455,272 @@ if (!window.readerModeInstance) {
       document.body.style.fontSize = `${this.fontSize}px`;
     }
 
-    setConfig(isReaderMode, isDarkMode, fontSize) {
+    async setConfig(isReaderMode, isDarkMode, fontSize) {
       this.fontSize = fontSize;
       this.isDarkMode = isDarkMode;
       this.setReaderMode(isReaderMode);
-
     }
 
-    updateStore() {
-      localStorage.setItem('readerModeConfig', JSON.stringify({
-        isReaderMode: this.isReaderMode,
-        isDarkMode: this.isDarkMode,
-        fontSize: this.fontSize
-      }));
+    async updateStore() {
+      try {
+        await chrome.storage.sync.set({
+          isReaderMode: this.isReaderMode,
+          isDarkMode: this.isDarkMode,
+          fontSize: this.fontSize
+        });
+      } catch (error) {
+        console.error('Error saving settings:', error);
+      }
+    }
+
+    // Helper method to generate a key for the audio map
+    generateAudioKey(text) {
+      const key = text.substring(0, 50).replace(/\s+/g, '_'); // Use first 50 chars of text as key
+      console.log('Generated audio key:', key);
+      return key;
+    }
+
+    // Helper method to clean up audio resources
+    cleanupAudio(key) {
+      if (this.audioMap.has(key)) {
+        const { audio, url } = this.audioMap.get(key);
+        if (url) {
+          URL.revokeObjectURL(url);
+        }
+        this.audioMap.delete(key);
+        console.log('Cleaned up audio for key:', key);
+      }
+    }
+
+    async preloadNextParagraph(text) {
+      const key = this.generateAudioKey(text);
+      
+      // Clean up existing audio if any
+      this.cleanupAudio(key);
+
+      try {
+        const audioBlob = await this.openAIReader.getAudioBlob(text);
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioUrl);
+        audio.volume = 1.0;
+        audio.playbackRate = 1.0;
+        
+        // Store audio in map
+        this.audioMap.set(key, { audio, url: audioUrl });
+        console.log('Preloaded audio for key:', key);
+        console.log('Current audioMap size:', this.audioMap.size);
+        console.log('Current audioMap keys:', Array.from(this.audioMap.keys()));
+      } catch (error) {
+        console.error('Error preloading next paragraph:', error);
+      }
+    }
+
+    async startTextToSpeech() {
+      if (!this.openAIReader) {
+        alert('Please set your OpenAI API key in the extension settings.');
+        return;
+      }
+
+      try {
+        // Get elements from reader-content and filter out empty ones
+        const allElements = document.querySelectorAll('.reader-content > *');
+        const elements = Array.from(allElements).filter(element => !this.isEmptyContent(element));
+
+        // If a paragraph is selected, start from that paragraph
+        let startIndex = 0;
+        if (this.selectedParagraph) {
+          startIndex = elements.indexOf(this.selectedParagraph);
+          if (startIndex === -1) startIndex = 0;
+        }
+
+        document.getElementById('ttsBtn').style.display = 'none';
+        document.getElementById('ttsPauseBtn').style.display = 'block';
+        document.getElementById('ttsStopBtn').style.display = 'block';
+
+        // Preload first paragraph and next paragraph
+        const firstText = elements[startIndex].textContent.trim();
+        if (firstText) {
+          const firstKey = this.generateAudioKey(firstText);
+          if (!this.audioMap.has(firstKey)) {
+            console.log('Loading first paragraph audio for key:', firstKey);
+            await this.preloadNextParagraph(firstText);
+          }
+        }
+
+        if (startIndex < elements.length - 1) {
+          const nextText = elements[startIndex + 1].textContent.trim();
+          if (nextText) {
+            const nextKey = this.generateAudioKey(nextText);
+            if (!this.audioMap.has(nextKey)) {
+              console.log('Preloading next paragraph audio for key:', nextKey);
+              await this.preloadNextParagraph(nextText);
+            }
+          }
+        }
+
+        // Read each element sequentially starting from selected paragraph
+        for (let i = startIndex; i < elements.length; i++) {
+          const element = elements[i];
+          if (this.isSpeechStopped) break;
+          
+          // Scroll element into view
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          
+          // Add highlight class
+          if (element.classList.contains('reader-paragraph')) {
+            element.classList.add('highlight');
+          }
+          
+          // Get text content
+          const text = element.textContent.trim();
+          if (!text) continue;
+
+          // Preload next paragraph if exists
+          if (i < elements.length - 1) {
+            const nextElement = elements[i + 1];
+            const nextText = nextElement.textContent.trim();
+            if (nextText) {
+              const nextKey = this.generateAudioKey(nextText);
+              if (!this.audioMap.has(nextKey)) {
+                console.log('Preloading next paragraph audio for key:', nextKey);
+                await this.preloadNextParagraph(nextText);
+              }
+            }
+          }
+
+          // Create a promise that resolves when the element is read
+          await new Promise((resolve) => {
+            const key = this.generateAudioKey(text);
+            let audio;
+            let audioUrl;
+
+            const playAudio = () => {
+              audio.onended = () => {
+                if (audioUrl) {
+                  URL.revokeObjectURL(audioUrl);
+                }
+                if (element.classList.contains('reader-paragraph')) {
+                  element.classList.remove('highlight');
+                }
+                console.log('Finished playing audio for key:', key);
+                resolve();
+              };
+
+              audio.play().catch(error => {
+                console.error('Error playing audio:', error);
+                if (audioUrl) {
+                  URL.revokeObjectURL(audioUrl);
+                }
+                resolve();
+              });
+            };
+
+            // Get audio from map
+            if (this.audioMap.has(key)) {
+              const audioData = this.audioMap.get(key);
+              audio = audioData.audio;
+              audioUrl = audioData.url;
+              this.audioMap.delete(key); // Remove from map after use
+              console.log('Using audio from map for key:', key);
+              playAudio();
+            } else {
+              // This should not happen as we preload above
+              console.error('Audio not found in map for key:', key);
+              resolve();
+            }
+          });
+        }
+
+        // Clean up any remaining audio resources
+        this.audioMap.forEach((_, key) => this.cleanupAudio(key));
+        this.audioMap.clear();
+        console.log('Cleaned up all audio resources');
+
+        // Reset button states when speech ends
+        document.getElementById('ttsBtn').style.display = 'block';
+        document.getElementById('ttsPauseBtn').style.display = 'none';
+        document.getElementById('ttsStopBtn').style.display = 'none';
+      } catch (error) {
+        console.error('Error with text-to-speech:', error);
+        alert('Error with text-to-speech. Please try again.');
+        // Reset button states on error
+        document.getElementById('ttsBtn').style.display = 'block';
+        document.getElementById('ttsPauseBtn').style.display = 'none';
+        document.getElementById('ttsStopBtn').style.display = 'none';
+      }
+    }
+
+    pauseTextToSpeech() {
+      if (this.openAIReader) {
+        this.openAIReader.pauseSpeech();
+        document.getElementById('ttsPauseBtn').style.display = 'none';
+        document.getElementById('ttsBtn').style.display = 'block';
+      }
+    }
+
+    stopTextToSpeech() {
+      this.isSpeechStopped = true;
+      
+      // Clean up all audio resources
+      this.audioMap.forEach((_, key) => this.cleanupAudio(key));
+      this.audioMap.clear();
+      console.log('Stopped and cleaned up all audio resources');
+      
+      document.getElementById('ttsPauseBtn').style.display = 'none';
+      document.getElementById('ttsStopBtn').style.display = 'none';
+      document.getElementById('ttsBtn').style.display = 'block';
+    }
+
+    getPageContent() {
+      // Get the main content of the page
+      const article = document.querySelector('article') ||
+        document.querySelector('main') ||
+        document.querySelector('.content') ||
+        document.body;
+
+      return article.innerText;
+    }
+
+    createContextMenu() {
+      if (this.contextMenu) {
+        document.body.removeChild(this.contextMenu);
+      }
+
+      const menu = document.createElement('div');
+      menu.className = 'reader-context-menu';
+      menu.innerHTML = `
+        <div class="menu-item" data-action="start-reading">Bắt đầu đọc từ đây</div>
+        <div class="menu-item" data-action="cancel">Hủy</div>
+      `;
+      document.body.appendChild(menu);
+      this.contextMenu = menu;
+
+      // Add click handlers for menu items
+      menu.querySelectorAll('.menu-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const action = item.dataset.action;
+          if (action === 'start-reading' && this.selectedParagraph) {
+            this.startTextToSpeech();
+          }
+          menu.style.display = 'none';
+        });
+      });
+    }
+
+    showContextMenu(e, paragraph) {
+      if (!this.contextMenu) {
+        this.createContextMenu();
+      }
+
+      // Position the menu at cursor
+      const menu = this.contextMenu;
+      menu.style.left = `${e.pageX}px`;
+      menu.style.top = `${e.pageY}px`;
+      menu.style.display = 'block';
+
+      // Store the selected paragraph
+      this.selectedParagraph = paragraph;
     }
   }
 
@@ -378,14 +729,35 @@ if (!window.readerModeInstance) {
   window.readerModeInstance.init();
 }
 
-const loadedConfig = localStorage.getItem('readerModeConfig');
-if (loadedConfig) {
-  const config = JSON.parse(loadedConfig);
-  window.readerModeInstance.setConfig(config.isReaderMode, config.isDarkMode, config.fontSize);
-}
+// Load saved configuration
+chrome.storage.sync.get(['isReaderMode', 'isDarkMode', 'fontSize'], (result) => {
+  if (window.readerModeInstance) {
+    console.log('Setting configuration:', result);
+    window.readerModeInstance.setConfig(
+      result.isReaderMode || false,
+      result.isDarkMode || false,
+      result.fontSize || 16
+    );
+  }
+});
+
 // Listen for messages from background script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'toggleReaderMode' && window.readerModeInstance) {
     window.readerModeInstance.toggleReaderMode();
   }
-}); 
+});
+
+// Listen for messages from popup
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === 'updateReaderMode' && window.readerModeInstance) {
+    window.readerModeInstance.setReaderMode(message.enabled, true);
+  }
+});
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === 'updateDarkMode' && window.readerModeInstance) {
+    window.readerModeInstance.setDarkMode(message.enabled);
+  }
+});
